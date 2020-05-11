@@ -1,0 +1,161 @@
+\documentclass[fleqn,10pt,twocolumn]{SICE20}
+
+\usepackage{graphicx}
+\graphicspath{{./images/}}
+\usepackage{gensymb}
+
+\title{Development of Deep-Learning-based Driver Monitoring Algorithms}
+
+\author{Ruide Li${}^{1\dagger}$ and Hiromatsu Aoki${}^{2}$}
+% The dagger symbol indicates the presenter.
+\speaker{Ruide Li}
+
+\affils{${}^{1}$HMI Sensing Dept. Automotive Business Unit, SenseTime Japan, Kyoto, Japan\\
+(E-mail: liruide@sensetime.jp)\\
+${}^{2}$HMI Sensing Dept. Automotive Business Unit, SenseTime Japan, Kyoto, Japan\\
+(E-mail: aoki@sensetime.jp)\\
+}
+
+\abstract{
+Traffic accidents cause millions of deaths worldwide each year, it is a huge challenge to improve the traffic environment. Recently, more and more automotive manufacturers are considering deploy Driver Monitoring Systems (DMS) on their future products. In this paper, we first describe what functions are required for a DMS, then explain what kind of efforts have SenseTime made in DMS, and finally discuss the further possibility for DMS in the near future.
+}
+
+\keywords{%
+Driver Monitoring System (DMS), Deep Learning, Convolutional Neural Network (CNN), Computer Vision (CV)
+}
+
+\begin{document}
+
+\maketitle
+
+%-----------------------------------------------------------------------
+
+\section{Introduction}
+
+According to the report from Tokyo Metropolitan Police Department\cite{traffic}, over two-thirds of the causes of traffic fatal accidents currently occurring in Japan are ``violations of safe driving obligations.'' Among them, almost 90\% of the accidents are caused by the carelessness of the driver, such as ``inattentive driving'', ``aimless driving'', ``inadequate operation'', and ``insufficient safety confirmation''. Therefore, as an approach to improve traffic safety, many Driver Monitoring Systems (DMS) are developed, so that the system can warn the driver to focus on driving.
+
+Meanwhile, as the rapid development of auto-driving research, vehicles with auto-driving-like system are increasingly manufactured. However, in SAE (J3016) Automation Levels, L1 and L2 automation require human driver performs the main aspects of the dynamic driving task; even L3 requires human driver to respond appropriately to a request to intervene. In order to avoid abuses of L1 $\mathtt{\sim}$ L3 automation systems, DMS will play an important role before L4 automation technology getting mature. 
+
+By installing DMS in to a vehicle, we introduce an in-vehicle camera. As a result, besides key features of DMS, people may also desire other computer vision functions such as identification with face recognition to unlock the car, more interactive infotainment applications, or a adjustable HUD (Head-Up Display) which can fit the drivers position.
+
+For the structure of this paper, we first describe what functions are required for a DMS, then explain what kind of efforts has SenseTime made in DMS, and finally discuss the further possibility for DMS in the near future.
+
+\section{Functions in DMS}
+
+Usually, DMS is understood as the whole system which may consist of camera, SoC, operating system, software, etc., while in this paper, we only focus on the image recognition process, where the input is a video stream and the output is the status of the driver. Camera specification and how to make use of the driver status (warning lights, warning sound, taking control of the vehicle, etc.) is out of the scope for this paper. 
+
+The two main functions required in DMS are drowsiness detection and distraction detection, which may cause fatal accidents. Drowsiness detection means to detect whether the driver is feeling drowsy or dozing off. As for distraction detection, the system should tell whether the driver is focusing on driving by detecting where the driver is looking at.
+
+Although driving safety is one of the main motivations for DMS, there are still many other in-vehicle scenarios, in which people can make benefit of computer vision algorithms. Other functions in DMS may include face recognition (identity verification), face expression recognition, action detection (such as smoking, drinking and calling on the phone), hand gesture detection or body posture detection. These functions may be not directly related to driving safety, but they may improve in-vehicle user experience a lot. Here are some examples. With face recognition technology, a hands-free unlock function can be applied; with hand gestures detection technology, the driver will be able to control audio volume or air conditioner by hand gestures, without looking at the control panel; with gaze direction estimation technology, HUD can adjust its position by tracking gaze direction of the driver.
+
+Besides functional requirements, robustness is vital for DMS. Driving scenes can be unexpected ranged, from pitch dark scenes during the night to dazzling backlighting scenes at noon, and algorithms should be able handle all these high dynamic ranged scenes. Moreover, running computationally expensive deep learning algorithms at a real-time rate on relatively less powerful automotive SoCs is also a challenge.
+
+\section{SenseTime DMS}
+
+In this section, we will discuss the mechanism of SenseTime DMS. The processing pipeline is shown as in Figure \ref{fig:pipeline}. We combine deep learning based models and logic based process. Face detection, face alignment, feature extraction, eye/mouth status recognition, gaze detection and 3D head position estimation modules are based on deep learning models, while yawn frequency, PERCLOS (Percentage of Eye Closure, \cite{perclos}), AOI (Area of Interest) estimation, feature comparison, drowsiness detection and distraction detection are based on rules and calculation.
+
+For one frame of input video stream, we first apply face detection to locate faces in the frame, then face alignment will provide detailed information of the face. Detailed face information with cropped face image will be fed into further CNN models, which provide face feature, gaze vector, eye/mouth status, and 3D head position for further inference.
+
+\begin{figure}
+    \centering
+        \includegraphics[width=0.45\textwidth]{DMS_Pipeline.pdf}
+        \caption{SenseTime DMS Pipeline}
+        \label{fig:pipeline}
+\end{figure}
+
+We fine-tune our algorithms on IR image dataset with ranged scenarios, so that they are robust enough to handle the high dynamic input range. Also, we specially designed algorithms for high performance on low-spec SoCs.
+
+\subsection{Face Detection/Alignment}
+
+SenseTime owns a huge annotated dataset for face detection/alignment training, also we fine-tune the model on dataset taken by IR cameras. However, besides accuracy, speed performance is a challenge for DMS application, since automotive SoCs are usually not that powerful comparing to CPUs and GPUs for PC. Face detection model is able to provide accurate results of face location, and face alignment model provide detailed face information like facial landmarks given the bounding box of faces. Yet the problem is that face detection requires much longer time due to large computation, as a result, it is nearly impossible to run face detection model on automotive SoCs at a real-time frame rate. We have designed an asynchronized mechanism to combine face detection and alignment, in which face detection runs sparsely to update face location, while between the interval of face detection, face alignment is applied to track the face location. 
+
+\subsection{Drowsiness Detection}
+
+After face alignment, we feed detailed face information to mouth/eye models in order to obtain the open/close status. Then we use a customizable time window to calculate PERCLOS and yawn. Finally, based on duration of eye closure and yawn frequency with a customizable threshold, a drowsiness level will be returned. In evaluation, our algorithm is able to reach over 98\% TAR@FAR=0.1\% (true alarm proportion at false alarm proportion less than 0.1\%).
+
+\subsection{Full-Face-Based Gaze Detection}
+
+In gaze detection, the purpose is to estimate gaze vector(s) in camera coordinate system, which represents the direction where the subject is looking into. Traditional gaze estimation works (such as \cite{eye_patch}) use eye landmarks to calculate gaze direction in head coordinate system, and then combine head pose (head angle) information to get the gaze angle in camera coordinate system.
+
+However, in SenseTime's work \cite{full_face}, we have found out that simply combining gaze direction and head pose somehow cannot accurately represent the geometric relationship between them. Instead of only using eye information, we also feed the whole face into the CNN model as a branch (as in Figure \ref{fig:full_face}), so that the model can learn the geometric relationship. Other works using full face approach such as \cite{full_face2} use attention mechanism to constrain weights which are not related to gaze estimation. Our DMS is deployed with similar full face approach in order to provide more accurate gaze estimation.
+
+\begin{figure}
+    \centering
+        \includegraphics[width=0.45\textwidth]{full_face.png}
+        \caption{Full Face Gaze Estimation Model}
+        \label{fig:full_face}
+\end{figure}
+
+After we have gaze vector, we can directly use it for distraction judgement by specifying angle range threshold (max/min pitch, yaw), or firstly define 3D regions as AOIs, such as front windshield, side mirrors, NAVI display, then see whether the driver's gaze vector intersect any AOI to inference where the driver is looking at. 
+
+\subsection{3D Position Estimation with Monocular Camera}
+
+Many 3D head/eye position estimation solutions are using stereo camera or Kinect (from Microsoft). Extra devices not only raise the cost, but also require much more space in the vehicle. In our system, it does not require more devices than the IR camera which is the same one as is used in face detection. 3D position estimation can be used together with HUD. Combining with gaze direction, head/eye position information will be provided so that the HUD can adjust its size and showing position for better user experience.
+
+\subsection{Face Recognition}
+
+In face recognition, we use deep CNN model to extract face feature (hign-dimentional vector) to represent each face, then compare the similarity of different faces to judge whether they are the same person. Similar to face detection/alignment, we also fine-tune the feature extraction model on IR image dataset. Our analysis of face recognition accuracy on real-car scenarios is shown in Table \ref{tab:face_recog}. We evaluated the recognition accuracy with 10000 distractor faces after the driver get into the vehicle and close the door. Our algorithm can reach 95.67\% accuracy within 5 seconds, or 99.67\% accuracy within 30 seconds.
+
+\begin{table}
+\begin{center}
+    \begin{tabular}{ | r | c | } 
+        \hline
+        5 seconds & 95.67\% \\ 
+        10 seconds & 99.07\% \\ 
+        30 seconds & 99.67\% \\ 
+        \hline
+    \end{tabular}
+    \caption{Recognition accuracy in N seconds after the driver closing the door (on 10000 faces database)}
+    \label{tab:face_recog}
+\end{center}
+\end{table}
+
+\subsection{Other Functions}
+
+There are several other functions in our DMS, such as face expression recognition, face mask/glasses/sunglasses detection, hand gestures detection and body posture detection. Although some of these functions may be not directly related driver monitoring, we provide them as an option of computer vision solution.
+
+\section{Further Issues}
+
+Needs of DMS (or more generalized, in-vehicle computer vision application) is still far from resolved. Here we give two open issues from two aspects.
+
+\subsection{Combination with ADAS}
+
+Working with ADAS (Advanced Driver-Assistance Systems) with front outside camera(s), it is also possible to combine gaze estimation and road information (provided by general object detection algorithms), the system can detect not only where (directions) the driver is looking into, but also what (objects) the driver is looking at. For instance, when ADAS detect pedestrian crossing the road, DMS is able to tell whether the driver is paying sufficient attention to the pedestrian and will send alarm if not.
+
+Such application requires high accuracy of gaze estimation, however, in general (person independent) gaze estimation, even state-of-the-art algorithms can only achieve an error of 4\degree $\mathtt{\sim}$ 5\degree, which is far from enough for out-of-vehicle scenarios. A possible reason is that there is a person dependent difference in structure inside the eyeball \cite{eyeball}. For distraction detection, this may be a sufficient accuracy, but for HUD application, much more accurate gaze estimation is required to precisely localize the point where the driver is looking at. To reach more accuracy, usually personal calibration is needed. Applying personal gaze calibration in DMS remains to be a further issue.
+
+\subsection{Passenger Monitoring}
+
+Our DMS so far is designed mainly for driver monitoring, while there are actual needs for passenger monitoring in the market. For example, whether the driver is leaving their children or pets in the car without air conditioner running.
+
+Yet the problem is that for back seat passenger, there are only few options of camera position and even though face detection coverage is still limited due to occlusion by seat-backs. Since additional camera for back seat passenger will highly expand the complexity and narrow the flexibility of the whole system, a mature solution for back seat passenger monitoring without increasing cameras remains to be a challenge.
+
+%%%%%%%%%%%%%%%%% BIBLIOGRAPHY IN THE LaTeX file !!!!! %%%%%%%%%%%%%%%%%%%%%%
+\begin{thebibliography}{9}
+\bibitem{traffic}
+Japanese Government Statistics Website,\\ https://www.e-stat.go.jp/stat-search/files?page=1\&la\\yout=datalist\&toukei=00130002\&tstat=0000010274\\58\&cycle=7\&year=20180\&month=0
+
+\bibitem{perclos}
+U. Trutschel, et al., ``PERCLOS: An Alertness Measure of the Past'',
+{\it Driving Assessment Conference}, 2011
+
+\bibitem{eye_patch}
+X. Zhang, et al., ``Appearance-based gaze estimation in the wild'',
+{\it IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}, 2015
+
+\bibitem{full_face}
+H. Deng, et al., ``Monocular Free-head 3D Gaze Tracking with Deep Learning and Geometry Constraints'',
+{\it The IEEE International Conference on Computer Vision (ICCV)}, 2017
+
+\bibitem{full_face2}
+X. Zhang, et al., ``It’s Written All Over Your Face: Full-Face Appearance-Based Gaze Estimation'',
+{\it The IEEE Conference on Computer Vision and Pattern Recognition Workshops (CVPRW)}, 2016
+
+\bibitem{eyeball}
+K. A. Funes Mora, et al., ``Geometric Generative Gaze Estimation (G3E) for Remote RGB-D Cameras'',
+{\it The IEEE Conference on Computer Vision and Pattern Recognition Workshops (CVPRW)}, 2014
+
+\end{thebibliography}
+
+\end{document}
+
